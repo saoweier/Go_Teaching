@@ -6,10 +6,14 @@ import {
   createGame,
   loadAnalysisHistory,
   loadFinalReview,
+  listGames,
   loadGame,
   playMove,
+  resumeGame,
   requestAiMove,
   setFocusRegion,
+  suspendGame,
+  terminateGame,
 } from "@/services/api";
 import type {
   AiProfile,
@@ -17,6 +21,7 @@ import type {
   AnalysisSnapshot,
   FinalReview,
   FocusRegion,
+  GameSummary,
   GameSession,
   Point,
   StoneColor,
@@ -40,6 +45,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
   const currentAnalysis = ref<AnalysisSnapshot | null>(null);
   const currentTeachingNote = ref<TeachingNote | null>(null);
   const finalReview = ref<FinalReview | null>(null);
+  const gameHistory = ref<GameSummary[]>([]);
   const aiProfile = ref<AiProfile>("teaching");
   const autoAnalyzeEnabled = ref(true);
 
@@ -52,8 +58,15 @@ export const useGameSessionStore = defineStore("gameSession", () => {
 
   const hasGame = computed(() => Boolean(gameSession.value));
   const canAnalyze = computed(() => Boolean(gameSession.value));
-  const canPlayAiMove = computed(() => Boolean(gameSession.value));
-  const isMyTurn = computed(() => gameSession.value?.board.to_play === gameSession.value?.user_color);
+  const canPlayAiMove = computed(() => {
+    const session = gameSession.value;
+    return session != null ? ["active", "passed_once"].includes(session.status) : false;
+  });
+  const isMyTurn = computed(
+    () =>
+      ["active", "passed_once"].includes(gameSession.value?.status ?? "") &&
+      gameSession.value?.board.to_play === gameSession.value?.user_color,
+  );
 
   function resetSessionState() {
     gameSession.value = null;
@@ -63,6 +76,10 @@ export const useGameSessionStore = defineStore("gameSession", () => {
     currentTeachingNote.value = null;
     finalReview.value = null;
     isAnalysisStale.value = false;
+  }
+
+  async function refreshGameHistory() {
+    gameHistory.value = await listGames();
   }
 
   function persistActiveGame() {
@@ -123,7 +140,9 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       });
       resetSessionState();
       gameSession.value = session;
+      finalReview.value = session.final_review;
       persistActiveGame();
+      await refreshGameHistory();
     } catch (error) {
       lastError.value = error instanceof Error ? error.message : "创建棋局失败";
       throw error;
@@ -142,6 +161,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       teachingHistory.value = history.teaching_notes.filter(Boolean) as TeachingNote[];
       currentAnalysis.value = analysisHistory.value.at(-1) ?? null;
       currentTeachingNote.value = teachingHistory.value.at(-1) ?? null;
+      finalReview.value = session.final_review;
       isAnalysisStale.value = false;
     } catch (error) {
       const handled = handleMissingGame(error, "之前的对局已经失效，已为你清空本地记录。请新开一局。");
@@ -164,6 +184,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       gameSession.value = await playMove(gameSession.value.id, { kind: "play", point });
       persistActiveGame();
       isAnalysisStale.value = true;
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -185,6 +206,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
         ai_profile: aiProfile.value,
       });
       pushEnvelope(envelope);
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -208,6 +230,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
         ai_profile: aiProfile.value,
       });
       pushEnvelope(envelope);
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -239,6 +262,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       });
       persistActiveGame();
       isAnalysisStale.value = true;
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -270,6 +294,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
     try {
       gameSession.value = await setFocusRegion(gameSession.value.id, region);
       persistActiveGame();
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -285,6 +310,10 @@ export const useGameSessionStore = defineStore("gameSession", () => {
     lastError.value = null;
     try {
       finalReview.value = await loadFinalReview(gameSession.value.id);
+      if (gameSession.value) {
+        gameSession.value.final_review = finalReview.value;
+      }
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -307,6 +336,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       gameSession.value = await playMove(gameSession.value.id, { kind: "pass" });
       persistActiveGame();
       isAnalysisStale.value = true;
+      await refreshGameHistory();
       await maybeAutoAnalyze();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
@@ -324,6 +354,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
       gameSession.value = await playMove(gameSession.value.id, { kind: "resign" });
       persistActiveGame();
       isAnalysisStale.value = true;
+      await refreshGameHistory();
     } catch (error) {
       const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
       if (!handled) {
@@ -336,6 +367,62 @@ export const useGameSessionStore = defineStore("gameSession", () => {
   async function submitResignAndReview() {
     await submitResign();
     await generateFinalReview();
+  }
+
+  async function suspendCurrentGame() {
+    if (!gameSession.value) return;
+    lastError.value = null;
+    try {
+      gameSession.value = await suspendGame(gameSession.value.id);
+      persistActiveGame();
+      await refreshGameHistory();
+    } catch (error) {
+      const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
+      if (!handled) {
+        lastError.value = error instanceof Error ? error.message : "挂起对局失败";
+      }
+      throw error;
+    }
+  }
+
+  async function resumeSuspendedGame(gameId: string) {
+    lastError.value = null;
+    try {
+      const session = await resumeGame(gameId);
+      gameSession.value = session;
+      finalReview.value = session.final_review;
+      persistActiveGame();
+      const history = await loadAnalysisHistory(gameId);
+      analysisHistory.value = history.analysis_snapshots;
+      teachingHistory.value = history.teaching_notes.filter(Boolean) as TeachingNote[];
+      currentAnalysis.value = analysisHistory.value.at(-1) ?? null;
+      currentTeachingNote.value = teachingHistory.value.at(-1) ?? null;
+      await refreshGameHistory();
+    } catch (error) {
+      const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
+      if (!handled) {
+        lastError.value = error instanceof Error ? error.message : "继续对局失败";
+      }
+      throw error;
+    }
+  }
+
+  async function terminateCurrentGame() {
+    if (!gameSession.value) return;
+    lastError.value = null;
+    try {
+      const response = await terminateGame(gameSession.value.id);
+      gameSession.value = response.game;
+      finalReview.value = response.review;
+      persistActiveGame();
+      await refreshGameHistory();
+    } catch (error) {
+      const handled = handleMissingGame(error, "当前对局在后端已不存在，已清空本地记录。请重新开始。");
+      if (!handled) {
+        lastError.value = error instanceof Error ? error.message : "终止对局失败";
+      }
+      throw error;
+    }
   }
 
   function setAiProfile(profile: AiProfile) {
@@ -374,6 +461,7 @@ export const useGameSessionStore = defineStore("gameSession", () => {
     currentAnalysis,
     currentTeachingNote,
     finalReview,
+    gameHistory,
     gameSession,
     generateFinalReview,
     getPersistedGameId,
@@ -389,14 +477,18 @@ export const useGameSessionStore = defineStore("gameSession", () => {
     playAiTurnAndAnalyze,
     requestCurrentAnalysis,
     requestLastMoveAnalysis,
+    refreshGameHistory,
+    resumeSuspendedGame,
     restoreGame,
     setAiProfile,
+    suspendCurrentGame,
     submitMove,
     submitMoveThenAi,
     submitPass,
     submitResign,
     submitResignAndReview,
     teachingHistory,
+    terminateCurrentGame,
     toggleAutoAnalyze,
     updateFocusRegion,
   };

@@ -1,6 +1,6 @@
 export type StoneColor = "black" | "white";
 export type MoveKind = "play" | "pass" | "resign";
-export type GameStatus = "active" | "passed_once" | "finished" | "resigned";
+export type GameStatus = "active" | "passed_once" | "suspended" | "finished" | "resigned" | "terminated";
 export type AiProfile = "companion" | "teaching" | "serious";
 
 export interface Point {
@@ -89,6 +89,9 @@ export interface GameSession {
   move_history: MoveRecord[];
   analysis_snapshots: AnalysisSnapshot[];
   teaching_notes: TeachingNote[];
+  final_review: FinalReview | null;
+  end_reason: string | null;
+  ended_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,6 +102,29 @@ export interface FinalReview {
   territory_estimate_white: number;
   capture_count_black: number;
   capture_count_white: number;
+  estimated_result: string;
   key_moments: string[];
+  local_highlights: string[];
+  improvement_points: string[];
   teaching_summary: string;
+  sgf_content: string;
+}
+
+export interface GameSummary {
+  id: string;
+  board_size: number;
+  user_color: StoneColor;
+  ai_color: StoneColor;
+  status: GameStatus;
+  move_count: number;
+  end_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  ended_at: string | null;
+  has_review: boolean;
+}
+
+export interface TerminateGameResponse {
+  game: GameSession;
+  review: FinalReview;
 }

@@ -102,6 +102,9 @@ class GameSession(BaseModel):
     move_history: list[MoveRecord] = Field(default_factory=list)
     analysis_snapshots: list[AnalysisSnapshot] = Field(default_factory=list)
     teaching_notes: list[TeachingNote] = Field(default_factory=list)
+    final_review: FinalReview | None = None
+    end_reason: str | None = None
+    ended_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -138,5 +141,23 @@ class FinalReview(BaseModel):
     territory_estimate_white: float
     capture_count_black: int
     capture_count_white: int
+    estimated_result: str
     key_moments: list[str] = Field(default_factory=list)
+    local_highlights: list[str] = Field(default_factory=list)
+    improvement_points: list[str] = Field(default_factory=list)
     teaching_summary: str
+    sgf_content: str
+
+
+class GameSummary(BaseModel):
+    id: str
+    board_size: int
+    user_color: StoneColor
+    ai_color: StoneColor
+    status: GameStatus
+    move_count: int
+    end_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    ended_at: datetime | None = None
+    has_review: bool = False

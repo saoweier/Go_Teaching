@@ -62,8 +62,10 @@ def validate_point(board: BoardState, point: Point) -> None:
 def apply_play(game: GameSession, color: StoneColor, point: Point) -> MoveRecord:
     board = game.board
     validate_point(board, point)
-    if game.status in {GameStatus.FINISHED, GameStatus.RESIGNED}:
+    if game.status in {GameStatus.FINISHED, GameStatus.RESIGNED, GameStatus.TERMINATED}:
         raise IllegalMoveError("Game is already finished")
+    if game.status == GameStatus.SUSPENDED:
+        raise IllegalMoveError("Game is suspended")
     if color != board.to_play:
         raise IllegalMoveError("It is not this color's turn")
     if board.grid[point.row][point.col] != ".":
@@ -115,6 +117,10 @@ def apply_play(game: GameSession, color: StoneColor, point: Point) -> MoveRecord
 
 def apply_pass(game: GameSession, color: StoneColor) -> MoveRecord:
     board = game.board
+    if game.status in {GameStatus.FINISHED, GameStatus.RESIGNED, GameStatus.TERMINATED}:
+        raise IllegalMoveError("Game is already finished")
+    if game.status == GameStatus.SUSPENDED:
+        raise IllegalMoveError("Game is suspended")
     if color != board.to_play:
         raise IllegalMoveError("It is not this color's turn")
     previous_status = game.status
@@ -133,6 +139,10 @@ def apply_pass(game: GameSession, color: StoneColor) -> MoveRecord:
 
 def apply_resign(game: GameSession, color: StoneColor) -> MoveRecord:
     board = game.board
+    if game.status in {GameStatus.FINISHED, GameStatus.RESIGNED, GameStatus.TERMINATED}:
+        raise IllegalMoveError("Game is already finished")
+    if game.status == GameStatus.SUSPENDED:
+        raise IllegalMoveError("Game is suspended")
     game.status = GameStatus.RESIGNED
     move = MoveRecord(
         move_number=len(game.move_history) + 1,

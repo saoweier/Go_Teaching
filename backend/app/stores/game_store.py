@@ -11,3 +11,6 @@ class InMemoryGameStore:
 
     def get(self, game_id: str) -> GameSession | None:
         return self._games.get(game_id)
+
+    def list_all(self) -> list[GameSession]:
+        return sorted(self._games.values(), key=lambda item: item.updated_at, reverse=True)

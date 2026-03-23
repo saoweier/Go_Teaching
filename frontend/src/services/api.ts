@@ -3,9 +3,11 @@ import type {
   AnalysisResultEnvelope,
   FinalReview,
   FocusRegion,
+  GameSummary,
   GameSession,
   Point,
   StoneColor,
+  TerminateGameResponse,
 } from "@/types/game";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -35,6 +37,10 @@ export function createGame(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function listGames() {
+  return request<GameSummary[]>("/api/games");
 }
 
 export function loadGame(gameId: string) {
@@ -93,6 +99,24 @@ export function setFocusRegion(gameId: string, payload: FocusRegion) {
 
 export function loadFinalReview(gameId: string) {
   return request<FinalReview>(`/api/games/${gameId}/final-review`, {
+    method: "POST",
+  });
+}
+
+export function suspendGame(gameId: string) {
+  return request<GameSession>(`/api/games/${gameId}/suspend`, {
+    method: "POST",
+  });
+}
+
+export function resumeGame(gameId: string) {
+  return request<GameSession>(`/api/games/${gameId}/resume`, {
+    method: "POST",
+  });
+}
+
+export function terminateGame(gameId: string) {
+  return request<TerminateGameResponse>(`/api/games/${gameId}/terminate`, {
     method: "POST",
   });
 }

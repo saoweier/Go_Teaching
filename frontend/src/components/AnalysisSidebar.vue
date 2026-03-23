@@ -99,14 +99,15 @@
           </button>
         </div>
 
-        <p class="empty-note">演化图会优先展示 1、4、8、12 手后的局面快照，方便看走势而不是硬读坐标。</p>
+        <p class="empty-note">演化图会优先显示 1、4、8、12 手后的局面快照，方便看走势而不是硬读坐标。</p>
       </template>
 
       <p v-else class="empty-note">先完成一次分析，才能展开候选点的后续演化。</p>
     </section>
 
     <div class="danger-row">
-      <button class="danger-button" :disabled="!canAnalyze" @click="$emit('resign')">认输并复盘</button>
+      <button class="danger-button" :disabled="!canAnalyze" @click="$emit('terminate')">强制终止并点目</button>
+      <button class="danger-button ghost-danger" :disabled="!canAnalyze" @click="$emit('resign')">认输并复盘</button>
     </div>
 
     <div v-if="activeSnapshot" class="snapshot-modal" @click.self="activeSnapshot = null">
@@ -149,6 +150,7 @@ defineEmits<{
   (e: "toggle-auto-analyze"): void;
   (e: "final-review"): void;
   (e: "resign"): void;
+  (e: "terminate"): void;
 }>();
 
 const selectedCandidate = computed<CandidateMove | null>(() => props.analysis?.top_moves[props.selectedCandidateIndex] ?? null);
@@ -336,6 +338,8 @@ function profileLabel(profile: AiProfile) {
 .danger-row {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .danger-button {
@@ -345,6 +349,10 @@ function profileLabel(profile: AiProfile) {
   color: var(--danger);
   border: 1px solid rgba(157, 75, 56, 0.2);
   font-weight: 700;
+}
+
+.ghost-danger {
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .snapshot-modal {

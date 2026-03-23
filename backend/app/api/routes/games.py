@@ -8,6 +8,7 @@ from app.domain.models import (
     CreateGameRequest,
     FocusRegionRequest,
     GameSession,
+    GameSummary,
     MoveRequest,
 )
 from app.domain.rules import IllegalMoveError
@@ -28,6 +29,11 @@ def _load_game(game_id: str) -> GameSession:
 @router.post("", response_model=GameSession)
 def create_game(request: CreateGameRequest) -> GameSession:
     return game_service.create_game(request)
+
+
+@router.get("", response_model=list[GameSummary])
+def list_games() -> list[GameSummary]:
+    return game_service.list_games()
 
 
 @router.get("/{game_id}", response_model=GameSession)
@@ -102,3 +108,37 @@ def get_focus(game_id: str):
 def final_review(game_id: str):
     game = _load_game(game_id)
     return review_service.build_final_review(game)
+
+
+@router.post("/{game_id}/suspend", response_model=GameSession)
+def suspend_game(game_id: str) -> GameSession:
+    try:
+        return game_service.suspend_game(game_id)
+    except GameNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Game not found") from exc
+    except IllegalMoveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{game_id}/resume", response_model=GameSession)
+def resume_game(game_id: str) -> GameSession:
+    try:
+        return game_service.resume_game(game_id)
+    except GameNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Game not found") from exc
+    except IllegalMoveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{game_id}/terminate")
+def terminate_game(game_id: str):
+    try:
+        game = game_service.terminate_game(game_id)
+        return {
+            "game": game,
+            "review": review_service.build_final_review(game),
+        }
+    except GameNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Game not found") from exc
+    except IllegalMoveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -76,130 +76,130 @@ class AnalysisService:
         if profile == "serious":
             return candidates[0]
         if profile == "companion":
-            return self._select_companion_move(game, candidates)
-        return self._sample_close_move(
+            return self._select_balanced_move(
+                game=game,
+                candidates=candidates,
+                min_order=3,
+                max_order=7,
+                target_winrate=self._target_winrate(game, profile),
+                allow_teaching_handicap=True,
+            )
+        return self._select_balanced_move(
+            game=game,
             candidates=candidates,
-            max_candidates=6,
-            winrate_gap=0.075,
-            score_gap=4.0,
-            weights_by_order=[0.34, 0.24, 0.17, 0.11, 0.09, 0.05],
+            min_order=2,
+            max_order=5,
+            target_winrate=self._target_winrate(game, profile),
+            allow_teaching_handicap=False,
         )
 
-    def _select_companion_move(self, game: GameSession, candidates: list[CandidateMove]) -> CandidateMove:
-        best = candidates[0]
-        root_pool = self._build_close_pool(
-            candidates=candidates,
-            max_candidates=8,
-            winrate_gap=0.18,
-            score_gap=10.0,
-        )
-        if not root_pool:
-            return best
+    def _select_balanced_move(
+        self,
+        game: GameSession,
+        candidates: list[CandidateMove],
+        min_order: int,
+        max_order: int,
+        target_winrate: float,
+        allow_teaching_handicap: bool,
+    ) -> CandidateMove:
+        pool = [candidate for candidate in candidates if candidate.move is not None and min_order <= candidate.order <= max_order]
+        if not pool:
+            pool = [candidate for candidate in candidates if candidate.move is not None]
+        if not pool:
+            return candidates[0]
 
         last_player_move = self._last_play_move_by_color(game, game.user_color)
-        move_count = len(game.move_history)
-
         if last_player_move:
-            local_pool = [
-                candidate
-                for candidate in root_pool
-                if candidate.move is not None and self._manhattan_distance(candidate.move, last_player_move) <= 4
-            ]
-            if local_pool:
-                root_pool = local_pool
+          local_pool = [
+              candidate
+              for candidate in pool
+              if candidate.move is not None and self._manhattan_distance(candidate.move, last_player_move) <= 5
+          ]
+          if local_pool:
+              pool = local_pool
 
         weighted_pool: list[tuple[CandidateMove, float]] = []
-        for candidate in root_pool:
-            weight = self._companion_base_weight(candidate.order, move_count)
+        for candidate in pool:
+            weight = self._target_winrate_weight(self._candidate_ai_winrate(game, candidate), target_winrate)
+
+            if candidate.order < min_order:
+                weight *= 0.4
+            if candidate.order > max_order:
+                weight *= 0.7
 
             if last_player_move and candidate.move:
                 distance = self._manhattan_distance(candidate.move, last_player_move)
                 if distance <= 2:
-                    weight *= 2.8
+                    weight *= 1.8
                 elif distance <= 4:
-                    weight *= 1.9
-                elif distance <= 6:
-                    weight *= 1.15
-                else:
-                    weight *= 0.55
-
-            if move_count < 20 and candidate.move:
-                if self._is_corner_or_side(candidate.move, game.board_size):
                     weight *= 1.35
-                else:
-                    weight *= 0.85
+                elif distance >= 8:
+                    weight *= 0.6
 
-            if candidate.order == 0 and len(root_pool) > 2:
-                weight *= 0.5
-
-            if candidate.order >= 5:
-                weight *= 0.75
+            if allow_teaching_handicap and self._looks_like_hard_punish(candidates):
+                if candidate.order == 0:
+                    weight *= 0.08
+                elif candidate.order == 1:
+                    weight *= 0.45
 
             weighted_pool.append((candidate, weight))
 
         if not weighted_pool:
-            return best
+            return candidates[0]
 
         choices = [item[0] for item in weighted_pool]
         weights = [item[1] for item in weighted_pool]
         return random.choices(choices, weights=weights, k=1)[0]
 
     @staticmethod
-    def _sample_close_move(
-        candidates: list[CandidateMove],
-        max_candidates: int,
-        winrate_gap: float,
-        score_gap: float,
-        weights_by_order: list[float],
-    ) -> CandidateMove:
-        pool = AnalysisService._build_close_pool(candidates, max_candidates, winrate_gap, score_gap)
-        if not pool:
-            return candidates[0]
-        if len(pool) == 1:
-            return pool[0]
-
-        weights = [weights_by_order[min(candidate.order, len(weights_by_order) - 1)] for candidate in pool]
-        return random.choices(pool, weights=weights, k=1)[0]
-
-    @staticmethod
-    def _build_close_pool(
-        candidates: list[CandidateMove],
-        max_candidates: int,
-        winrate_gap: float,
-        score_gap: float,
-    ) -> list[CandidateMove]:
-        best = candidates[0]
-        pool: list[CandidateMove] = []
-
-        for candidate in candidates[:max_candidates]:
-            if candidate.move is None:
-                continue
-
-            within_winrate = (
-                best.winrate is None
-                or candidate.winrate is None
-                or abs(best.winrate - candidate.winrate) <= winrate_gap
-            )
-            within_score = (
-                best.score_lead is None
-                or candidate.score_lead is None
-                or abs(best.score_lead - candidate.score_lead) <= score_gap
-            )
-
-            if within_winrate and within_score:
-                pool.append(candidate)
-
-        return pool
-
-    @staticmethod
-    def _companion_base_weight(order: int, move_count: int) -> float:
+    def _target_winrate(game: GameSession, profile: str) -> float:
+        move_count = len(game.move_history)
+        if profile == "companion":
+            if move_count < 20:
+                return 0.52
+            if move_count < 50:
+                return 0.55
+            return 0.56
         if move_count < 20:
-            table = [0.16, 0.2, 0.2, 0.17, 0.12, 0.08, 0.05, 0.02]
-        elif move_count < 80:
-            table = [0.12, 0.18, 0.2, 0.18, 0.14, 0.1, 0.05, 0.03]
-        else:
-            table = [0.1, 0.16, 0.2, 0.18, 0.15, 0.11, 0.07, 0.03]
-        return table[min(order, len(table) - 1)]
+            return 0.55
+        if move_count < 50:
+            return 0.58
+        return 0.6
+
+    @staticmethod
+    def _target_winrate_weight(candidate_winrate: float | None, target_winrate: float) -> float:
+        if candidate_winrate is None:
+            return 1.0
+        distance = abs(candidate_winrate - target_winrate)
+        if distance <= 0.015:
+            return 2.5
+        if distance <= 0.03:
+            return 2.0
+        if distance <= 0.05:
+            return 1.55
+        if distance <= 0.08:
+            return 1.1
+        return 0.6
+
+    @staticmethod
+    def _candidate_ai_winrate(game: GameSession, candidate: CandidateMove) -> float | None:
+        if candidate.winrate is None:
+            return None
+        if game.ai_color.value == "black":
+            return candidate.winrate
+        return 1 - candidate.winrate
+
+    @staticmethod
+    def _looks_like_hard_punish(candidates: list[CandidateMove]) -> bool:
+        if len(candidates) < 2:
+            return False
+        best = candidates[0]
+        second = candidates[1]
+        if best.winrate is not None and second.winrate is not None and abs(best.winrate - second.winrate) >= 0.05:
+            return True
+        if best.score_lead is not None and second.score_lead is not None and abs(best.score_lead - second.score_lead) >= 3.0:
+            return True
+        return False
 
     @staticmethod
     def _last_play_move_by_color(game: GameSession, color) -> Point | None:
@@ -211,12 +211,3 @@ class AnalysisService:
     @staticmethod
     def _manhattan_distance(a: Point, b: Point) -> int:
         return abs(a.row - b.row) + abs(a.col - b.col)
-
-    @staticmethod
-    def _is_corner_or_side(point: Point, board_size: int) -> bool:
-        edge_band = 4
-        near_top = point.row < edge_band
-        near_bottom = point.row >= board_size - edge_band
-        near_left = point.col < edge_band
-        near_right = point.col >= board_size - edge_band
-        return near_top or near_bottom or near_left or near_right

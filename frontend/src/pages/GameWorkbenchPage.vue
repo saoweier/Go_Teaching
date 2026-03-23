@@ -12,6 +12,8 @@
             :session="store.gameSession"
             @change-ai-profile="store.setAiProfile"
             @new-game="handleNewGame"
+            @suspend="handleSuspendGame"
+            @resume-current="handleResumeCurrent"
             @ai-move="handleAiMove"
             @pass="store.submitPass"
             @toggle-focus="toggleFocusMode"
@@ -45,6 +47,7 @@
           @toggle-auto-analyze="store.toggleAutoAnalyze"
           @final-review="handleFinalReview"
           @resign="handleResign"
+          @terminate="handleTerminate"
         />
       </div>
 
@@ -53,8 +56,11 @@
         :analysis-history="store.analysisHistory"
         :teaching-history="store.teachingHistory"
         :final-review="store.finalReview"
+        :game-history="store.gameHistory"
         :active-tab="bottomTab"
         @change-tab="bottomTab = $event"
+        @open-game="handleOpenGame"
+        @resume-game="handleResumeGame"
       />
 
       <div v-if="store.lastError" class="error-banner panel">
@@ -74,20 +80,33 @@ import { useGameSessionStore } from "@/stores/gameSession";
 import type { FocusRegion } from "@/types/game";
 
 const store = useGameSessionStore();
-const bottomTab = ref<"moves" | "analysis" | "teaching" | "review">("moves");
+const bottomTab = ref<"moves" | "analysis" | "teaching" | "review" | "history">("moves");
 const focusMode = ref(false);
 const selectedCandidateIndex = ref(0);
 
 const selectedCandidate = computed(() => store.currentAnalysis?.top_moves[selectedCandidateIndex.value] ?? null);
 
 async function handleNewGame() {
-  const shouldCreate = window.confirm("确定开始新对局吗？当前对局进度会被保留在历史里，但界面会切换到新棋局。");
+  const shouldCreate = window.confirm("确定开始新对局吗？当前对局会保留在历史列表里。");
   if (!shouldCreate) return;
 
   selectedCandidateIndex.value = 0;
   bottomTab.value = "moves";
   focusMode.value = false;
   await store.createNewGame("black");
+}
+
+async function handleSuspendGame() {
+  const shouldSuspend = window.confirm("确定挂起当前对局吗？挂起后可以在历史对局里继续下。");
+  if (!shouldSuspend) return;
+
+  await store.suspendCurrentGame();
+  bottomTab.value = "history";
+}
+
+async function handleResumeCurrent() {
+  if (!store.gameSession) return;
+  await store.resumeSuspendedGame(store.gameSession.id);
 }
 
 async function handleAnalyzeCurrent() {
@@ -127,6 +146,24 @@ async function handleResign() {
   await store.submitResignAndReview();
 }
 
+async function handleTerminate() {
+  const shouldTerminate = window.confirm("确定强制终止当前对局吗？终止后会立即估算点目并生成复盘。");
+  if (!shouldTerminate) return;
+
+  bottomTab.value = "review";
+  await store.terminateCurrentGame();
+}
+
+async function handleOpenGame(gameId: string) {
+  await store.restoreGame(gameId);
+  bottomTab.value = store.finalReview ? "review" : "moves";
+}
+
+async function handleResumeGame(gameId: string) {
+  await store.resumeSuspendedGame(gameId);
+  bottomTab.value = "moves";
+}
+
 function toggleFocusMode() {
   focusMode.value = !focusMode.value;
 }
@@ -137,6 +174,7 @@ async function handleFocusSelect(region: FocusRegion) {
 }
 
 onMounted(async () => {
+  await store.refreshGameHistory();
   const persistedGameId = store.getPersistedGameId();
   if (persistedGameId) {
     try {

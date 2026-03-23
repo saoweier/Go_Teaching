@@ -17,8 +17,10 @@ class StoneColor(str, Enum):
 class GameStatus(str, Enum):
     ACTIVE = "active"
     PASSED_ONCE = "passed_once"
+    SUSPENDED = "suspended"
     FINISHED = "finished"
     RESIGNED = "resigned"
+    TERMINATED = "terminated"
 
 
 class MoveKind(str, Enum):

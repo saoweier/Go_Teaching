@@ -8,6 +8,7 @@
       <div class="status-row">
         <span class="chip">执棋：{{ colorLabel(session?.user_color) }}</span>
         <span class="chip">行棋方：{{ colorLabel(session?.board.to_play) }}</span>
+        <span class="chip">状态：{{ statusLabel(session?.status) }}</span>
         <span class="chip">手数：{{ session?.move_history.length ?? 0 }}</span>
       </div>
     </div>
@@ -34,10 +35,23 @@
         <button class="action-button" :disabled="creatingGame" @click="$emit('new-game')">
           {{ creatingGame ? "创建中..." : "新对局" }}
         </button>
+        <button
+          class="action-button secondary"
+          :disabled="!session || session.status === 'finished' || session.status === 'resigned' || session.status === 'terminated'"
+          @click="handleSuspendOrResume"
+        >
+          {{ session?.status === "suspended" ? "继续对局" : "挂起对局" }}
+        </button>
         <button class="action-button secondary" :disabled="!canPlayAi || playingAi" @click="$emit('ai-move')">
           {{ playingAi ? "AI 应手中..." : "AI 应手" }}
         </button>
-        <button class="action-button secondary" :disabled="!session" @click="$emit('pass')">停一手</button>
+        <button
+          class="action-button secondary"
+          :disabled="!session || !['active', 'passed_once'].includes(session.status)"
+          @click="$emit('pass')"
+        >
+          停一手
+        </button>
         <button class="action-button ghost" :disabled="!session" @click="$emit('toggle-focus')">
           {{ focusMode ? "退出局部聚焦" : "局部聚焦" }}
         </button>
@@ -47,9 +61,9 @@
 </template>
 
 <script setup lang="ts">
-import type { AiProfile, GameSession, StoneColor } from "@/types/game";
+import type { AiProfile, GameSession, GameStatus, StoneColor } from "@/types/game";
 
-defineProps<{
+const props = defineProps<{
   aiProfile: AiProfile;
   canPlayAi: boolean;
   creatingGame: boolean;
@@ -58,9 +72,11 @@ defineProps<{
   session: GameSession | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "change-ai-profile", value: AiProfile): void;
   (e: "new-game"): void;
+  (e: "suspend"): void;
+  (e: "resume-current"): void;
   (e: "ai-move"): void;
   (e: "pass"): void;
   (e: "toggle-focus"): void;
@@ -71,25 +87,43 @@ const AI_PROFILES: Array<{ value: AiProfile; icon: string; label: string; descri
     value: "companion",
     icon: "🐥",
     label: "陪练",
-    description: "10岁左右，学棋 1 年内。更慢、更软、留明显提示。",
+    description: "10岁左右，学棋 1 年内。优先软一点地应手，尽量让局面保持可学可下。",
   },
   {
     value: "teaching",
     icon: "🧭",
     label: "教学",
-    description: "14岁左右，学棋 1 到 2 年。讲思路，也保留对抗感。",
+    description: "14岁左右，学棋 1 到 2 年。会认真下，但会保留讲解空间。",
   },
   {
     value: "serious",
     icon: "⚔",
     label: "认真下",
-    description: "16岁左右，学棋 3 年以上。尽量按强手出招。",
+    description: "16岁左右，学棋 3 年以上。基本按强手来，适合挨打后复盘。",
   },
 ];
+
+function handleSuspendOrResume() {
+  if (props.session?.status === "suspended") {
+    emit("resume-current");
+    return;
+  }
+  emit("suspend");
+}
 
 function colorLabel(color?: StoneColor) {
   if (color === "black") return "黑棋";
   if (color === "white") return "白棋";
+  return "未开始";
+}
+
+function statusLabel(status?: GameStatus) {
+  if (status === "active") return "进行中";
+  if (status === "passed_once") return "一方已停";
+  if (status === "suspended") return "已挂起";
+  if (status === "finished") return "正常结束";
+  if (status === "resigned") return "认输结束";
+  if (status === "terminated") return "强制终止";
   return "未开始";
 }
 </script>
