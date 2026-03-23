@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Logs
+*.log
+logs/
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GTP/Analysis logs
+gtp_logs/
+analysis_logs/
+
+# Model files (large binary)
+*.bin
+*.model
+*.gz
+
+# Go teaching specific
+*.sgf
